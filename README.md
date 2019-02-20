@@ -1,8 +1,8 @@
 # AtherosCSI-NG
 
 The Atheros CSI tool, pusblished by @xieyaxiongfly, is composed by: 
-- (a modified kernel driver fot atheros card)[https://github.com/xieyaxiongfly/Atheros-CSI-Tool] 
-- (userspace tools)[https://github.com/xieyaxiongfly/Atheros-CSI-Tool-UserSpace-APP]  
+- [a modified kernel driver fot atheros card](https://github.com/xieyaxiongfly/Atheros-CSI-Tool) 
+- [userspace tools](https://github.com/xieyaxiongfly/Atheros-CSI-Tool-UserSpace-APP)  
 
 The modified kernel is distributed in the form of a complete set of kernel sources, more specifically 4.1.10 kernel sources, but this format poses several problems:
 
