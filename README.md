@@ -16,8 +16,12 @@ And more important, you'll get rid of old, incompatible, unsecure kernels.
 ## Compatibility
 Tested on ubuntu 16.04 original kernel sources
 ## Use
-drop this file anywhere in your system, then, from the directory of your kernel sources:
-`cat path/to/this/patch/ath_csi.patch | patch -p1 --dry-run`
-if you get no rejects, you can patch:
-`cat path/to/this/patch/ath_csi.patch | patch -p1`
-and then you can configure, make and install or build kernel-package as usual
+drop this file anywhere in your system, then, from the directory of your kernel sources:  
+`cat path/to/this/patch/ath_csi.patch | patch -p1 --dry-run`  
+if you get no rejects, you can patch:  
+`cat path/to/this/patch/ath_csi.patch | patch -p1`  
+and then you can configure, make and install or build kernel-package as usual.  
+  
+  
+I how this patch could serve more people. Enjoy!  
+AA
