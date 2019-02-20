@@ -11,8 +11,7 @@ The modified kernel is distributed in the form of a complete set of kernel sourc
 - this breaks compatibility with newer versions of gnu/linux distros and the hardware support to newer computers
 - this renders your system extremely vulnerable to several bugs that have been patched in the kernel since then 
 
-So, we extracted and adapted the code that was truly added/modified from the kernel sources. This way we obtained a valid, compatible, flexible patch file that you can successfully apply on newer kernels so you don't have to choose between having CSI and sacrifying {bluetooth,wifi,ethernet,security,newer software}.  
-You can now get rid of old, incompatible, unsecure kernels.
+So, we extracted and adapted the code that was truly added/modified from the kernel sources. This way we obtained a valid, compatible, flexible patch file that you can successfully apply on newer kernels so you don't have to sacrifice {bluetooth,wifi,ethernet,security,newer software} in order to be able to perform research with this intesting tool. An more important, you'll get rid of old, incompatible, unsecure kernels.
 ## Compatibility
 Tested on ubuntu 16.04 original kernel sources
 ## Use
