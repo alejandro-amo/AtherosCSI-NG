@@ -1,0 +1,303 @@
+Sólo en linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k: ar9003_csi.c
+Sólo en linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k: ar9003_csi.h
+diff -aur linux-4.1.10/drivers/net/wireless/ath/ath9k/ar9003_mac.c linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/ar9003_mac.c
+--- linux-4.1.10/drivers/net/wireless/ath/ath9k/ar9003_mac.c	2015-10-03 13:49:38.000000000 +0200
++++ linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/ar9003_mac.c	2019-02-20 15:43:01.390450076 +0100
+@@ -17,6 +17,7 @@
+ #include "hw.h"
+ #include "ar9003_mac.h"
+ #include "ar9003_mci.h"
++#include "ar9003_csi.h"
+ 
+ static void ar9003_hw_rx_enable(struct ath_hw *hw)
+ {
+@@ -30,7 +31,8 @@
+ 	int checksum = 0;
+ 	u32 val, ctl12, ctl17;
+ 	u8 desc_len;
+-
++    u_int8_t rate1,rate2,rate3,rate4;
++    
+ 	desc_len = ((AR_SREV_9462(ah) || AR_SREV_9565(ah)) ? 0x18 : 0x17);
+ 
+ 	val = (ATHEROS_VENDOR_ID << AR_DescId_S) |
+@@ -61,6 +63,7 @@
+ 	ACCESS_ONCE(ads->ctl7) = val;
+ 	checksum += (val = (i->buf_len[3] << AR_BufLen_S) & AR_BufLen);
+ 	ACCESS_ONCE(ads->ctl9) = val;
++    
+ 
+ 	checksum = (u16) (((checksum & 0xffff) + (checksum >> 16)) & 0xffff);
+ 	ACCESS_ONCE(ads->ctl10) = checksum;
+@@ -82,7 +85,7 @@
+ 		ACCESS_ONCE(ads->ctl14) = 0;
+ 	}
+ 
+-	ads->ctl20 = 0;
++    ads->ctl20 = 0;
+ 	ads->ctl21 = 0;
+ 	ads->ctl22 = 0;
+ 	ads->ctl23 = 0;
+@@ -150,11 +153,29 @@
+ 		| set11nRateFlags(i->rates, 3)
+ 		| SM(i->rtscts_rate, AR_RTSCTSRate);
+ 
+-	ACCESS_ONCE(ads->ctl19) = AR_Not_Sounding;
+-
+ 	ACCESS_ONCE(ads->ctl20) = SM(i->txpower[1], AR_XmitPower1);
+ 	ACCESS_ONCE(ads->ctl21) = SM(i->txpower[2], AR_XmitPower2);
+ 	ACCESS_ONCE(ads->ctl22) = SM(i->txpower[3], AR_XmitPower3);
++
++    rate1 = (ads->ctl14 >> 24) & 0xff;
++    rate2 = (ads->ctl14 >> 16) & 0xff;
++    rate3 = (ads->ctl14 >> 8)  & 0xff;
++    rate4 = (ads->ctl14 >> 0)  & 0xff;
++
++    if ( rate1 >= 0x80 || rate2 >= 0x80 || rate3 >= 0x80){
++	    ACCESS_ONCE(ads->ctl19) = 0;
++        ACCESS_ONCE(ads->ctl13) &= ~(AR_xmit_data_tries1 | AR_xmit_data_tries2 | AR_xmit_data_tries3);
++	    ACCESS_ONCE(ads->ctl20) &= 0x3f000000;
++	    ACCESS_ONCE(ads->ctl21) &= 0x3f000000;
++	    ACCESS_ONCE(ads->ctl22) &= 0x3f000000;
++    }else{
++	    ACCESS_ONCE(ads->ctl19) = AR_Not_Sounding;
++    }
++    if ( rate4 >= 0x80){
++	    ACCESS_ONCE(ads->ctl19) = 0;
++    }else{
++	    ACCESS_ONCE(ads->ctl19) = AR_Not_Sounding;
++    }
+ }
+ 
+ static u16 ar9003_calc_ptr_chksum(struct ar9003_txc *ads)
+@@ -483,6 +504,9 @@
+ 	struct ar9003_rxs *rxsp = (struct ar9003_rxs *) buf_addr;
+ 	unsigned int phyerr;
+ 
++	void *data_addr;
++    	u_int16_t data_len;
++
+ 	if ((rxsp->status11 & AR_RxDone) == 0)
+ 		return -EINPROGRESS;
+ 
+@@ -577,9 +601,25 @@
+ 			}
+ 		}
+ 	}
+-
+-	if (rxsp->status11 & AR_KeyMiss)
++   
++    if (rxsp->status11 & AR_KeyMiss)
+ 		rxs->rs_status |= ATH9K_RXERR_KEYMISS;
++    
++    data_len = rxs->rs_datalen;
++    data_addr = buf_addr + 48;
++    
++    if (rxsp->status11 & AR_CRCErr){
++        if (rxs->rs_rate >= 0x80){
++            csi_record_payload(data_addr,data_len);
++            csi_record_status(ah,rxs,rxsp,data_addr);
++        }
++    }else{
++        if  (rxs->rs_more == 1)
++            csi_record_payload(data_addr,data_len);
++
++        if (rxs->rs_rate >= 0x80)
++            csi_record_status(ah,rxs,rxsp,data_addr);
++ 	}
+ 
+ 	return 0;
+ }
+diff -aur linux-4.1.10/drivers/net/wireless/ath/ath9k/ar9003_phy.c linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/ar9003_phy.c
+--- linux-4.1.10/drivers/net/wireless/ath/ath9k/ar9003_phy.c	2015-10-03 13:49:38.000000000 +0200
++++ linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/ar9003_phy.c	2019-02-20 15:43:01.391450074 +0100
+@@ -704,6 +704,7 @@
+ 
+ 	REG_WRITE(ah, AR_SELFGEN_MASK, tx);
+ }
++EXPORT_SYMBOL(ar9003_hw_set_chain_masks);
+ 
+ /*
+  * Override INI values with chip specific configuration.
+diff -aur linux-4.1.10/drivers/net/wireless/ath/ath9k/debug.c linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/debug.c
+--- linux-4.1.10/drivers/net/wireless/ath/ath9k/debug.c	2015-10-03 13:49:38.000000000 +0200
++++ linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/debug.c	2019-02-20 15:43:01.395450063 +0100
+@@ -907,6 +907,89 @@
+ 	.llseek = default_llseek,
+ };
+ 
++
++static ssize_t read_file_tx_chainmask(struct file *file,
++		  char __user *user_buf,
++		  size_t count, loff_t *ppos)
++{
++	struct ath_hw *ah = file->private_data;
++	char buf[8];
++	u8 len;
++
++	len = sprintf(buf, "%u\n", ah->txchainmask);
++	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
++}
++
++static ssize_t write_file_tx_chainmask(struct file *file,
++		   const char __user *user_buf,
++		   size_t count, loff_t *ppos)
++{
++	struct ath_hw *ah = file->private_data;
++	u8 tx_chainmask;
++	char buf[8];
++	u8 len;
++
++	len = min(count, sizeof(buf) - 1);
++	if (copy_from_user(buf, user_buf, len))
++		return -EFAULT;
++
++	buf[len] = '\0';
++	if (kstrtou8(buf, 0, &tx_chainmask))
++		return -EINVAL;
++	ah->txchainmask = tx_chainmask;
++	ar9003_hw_set_chain_masks(ah,ah->rxchainmask,ah->txchainmask);
++	return count;
++}
++
++static const struct file_operations fops_tx_chainmask = {
++	.read = read_file_tx_chainmask,
++	.write = write_file_tx_chainmask,
++	.open = simple_open,
++	.owner = THIS_MODULE,
++	.llseek = default_llseek,
++};
++
++static ssize_t read_file_rx_chainmask(struct file *file,
++		  char __user *user_buf,
++		  size_t count, loff_t *ppos)
++{
++	struct ath_hw *ah = file->private_data;
++	char buf[8];
++	u8 len;
++
++	len = sprintf(buf, "%u\n", ah->rxchainmask);
++	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
++}
++
++static ssize_t write_file_rx_chainmask(struct file *file,
++		   const char __user *user_buf,
++		   size_t count, loff_t *ppos)
++{
++	struct ath_hw *ah = file->private_data;
++	u8 rx_chainmask;
++	char buf[8];
++	u8 len;
++
++	len = min(count, sizeof(buf) - 1);
++	if (copy_from_user(buf, user_buf, len))
++		return -EFAULT;
++
++	buf[len] = '\0';
++	if (kstrtou8(buf, 0, &rx_chainmask))
++		return -EINVAL;
++	ah->rxchainmask = rx_chainmask;
++	ar9003_hw_set_chain_masks(ah,ah->rxchainmask,ah->txchainmask);
++	return count;
++}
++
++static const struct file_operations fops_rx_chainmask = {
++	.read = read_file_rx_chainmask,
++	.write = write_file_rx_chainmask,
++	.open = simple_open,
++	.owner = THIS_MODULE,
++	.llseek = default_llseek,
++};
++
+ #define REGDUMP_LINE_SIZE	20
+ 
+ static int open_file_regdump(struct inode *inode, struct file *file)
+@@ -1342,10 +1425,10 @@
+ 	ath9k_cmn_debug_recv(sc->debug.debugfs_phy, &sc->debug.stats.rxstats);
+ 	ath9k_cmn_debug_phy_err(sc->debug.debugfs_phy, &sc->debug.stats.rxstats);
+ 
+-	debugfs_create_u8("rx_chainmask", S_IRUSR, sc->debug.debugfs_phy,
+-			  &ah->rxchainmask);
+-	debugfs_create_u8("tx_chainmask", S_IRUSR, sc->debug.debugfs_phy,
+-			  &ah->txchainmask);
++	debugfs_create_file("rx_chainmask", S_IRWXU | S_IWUSR, sc->debug.debugfs_phy, ah,
++					    &fops_rx_chainmask);
++	debugfs_create_file("tx_chainmask", S_IRWXU | S_IWUSR, sc->debug.debugfs_phy, ah,
++				        &fops_tx_chainmask);
+ 	debugfs_create_file("ani", S_IRUSR | S_IWUSR,
+ 			    sc->debug.debugfs_phy, sc, &fops_ani);
+ 	debugfs_create_bool("paprd", S_IRUSR | S_IWUSR, sc->debug.debugfs_phy,
+diff -aur linux-4.1.10/drivers/net/wireless/ath/ath9k/hw.c linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/hw.c
+--- linux-4.1.10/drivers/net/wireless/ath/ath9k/hw.c	2015-10-03 13:49:38.000000000 +0200
++++ linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/hw.c	2019-02-20 15:43:01.399450053 +0100
+@@ -1818,6 +1818,7 @@
+ 	u32 saveLedState;
+ 	u32 saveDefAntenna;
+ 	u32 macStaId1;
++	u32 tmp;
+ 	u64 tsf = 0;
+ 	s64 usec = 0;
+ 	int r;
+@@ -2028,6 +2029,10 @@
+ 		ah->radar_conf.ext_channel = IS_CHAN_HT40(chan);
+ 		ath9k_hw_set_radar_params(ah);
+ 	}
++	//csi_debug 
++    	tmp = REG_READ(ah,0x8344);
++    	tmp |= (1 << 28);
++    	REG_WRITE(ah, 0x8344,tmp);
+ 
+ 	return 0;
+ }
+diff -aur linux-4.1.10/drivers/net/wireless/ath/ath9k/init.c linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/init.c
+--- linux-4.1.10/drivers/net/wireless/ath/ath9k/init.c	2015-10-03 13:49:38.000000000 +0200
++++ linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/init.c	2019-02-20 15:43:01.399450053 +0100
+@@ -831,7 +831,7 @@
+ 		hw->flags |= IEEE80211_HW_SUPPORTS_PS;
+ 
+ 	if (sc->sc_ah->caps.hw_caps & ATH9K_HW_CAP_HT) {
+-		ieee80211_hw_set(hw, AMPDU_AGGREGATION);
++		//ieee80211_hw_set(hw, AMPDU_AGGREGATION);
+ 
+ 		if (AR_SREV_9280_20_OR_LATER(ah))
+ 			hw->radiotap_mcs_details |=
+diff -aur linux-4.1.10/drivers/net/wireless/ath/ath9k/main.c linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/main.c
+--- linux-4.1.10/drivers/net/wireless/ath/ath9k/main.c	2015-10-03 13:49:38.000000000 +0200
++++ linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/main.c	2019-02-20 15:43:01.400450050 +0100
+@@ -2116,7 +2116,6 @@
+ 		bf = avp->av_bcbuf;
+ 		if (!bf || !bf->bf_mpdu)
+ 			goto skip;
+-
+ 		status = ath9k_hw_txprocdesc(ah, bf->bf_desc, &ts);
+ 		if (status == -EINPROGRESS)
+ 			goto skip;
+diff -aur linux-4.1.10/drivers/net/wireless/ath/ath9k/Makefile linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/Makefile
+--- linux-4.1.10/drivers/net/wireless/ath/ath9k/Makefile	2015-10-03 13:49:38.000000000 +0200
++++ linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/Makefile	2019-02-20 15:43:01.385450089 +0100
+@@ -1,3 +1,5 @@
++obj-m   +=      ar9003_csi.o 
++
+ ath9k-y +=	beacon.o \
+ 		gpio.o \
+ 		init.o \
+diff -aur linux-4.1.10/drivers/net/wireless/ath/ath9k/xmit.c linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/xmit.c
+--- linux-4.1.10/drivers/net/wireless/ath/ath9k/xmit.c	2015-10-03 13:49:38.000000000 +0200
++++ linux-CSI-4.1.10/drivers/net/wireless/ath/ath9k/xmit.c	2019-02-20 15:43:01.402450045 +0100
+@@ -2681,7 +2681,7 @@
+ 
+ 		lastbf = bf->bf_lastbf;
+ 		ds = lastbf->bf_desc;
+-
++        
+ 		memset(&ts, 0, sizeof(ts));
+ 		status = ath9k_hw_txprocdesc(ah, ds, &ts);
+ 		if (status == -EINPROGRESS)
+@@ -2736,7 +2736,6 @@
+ 	for (;;) {
+ 		if (test_bit(ATH_OP_HW_RESET, &common->op_flags))
+ 			break;
+-
+ 		status = ath9k_hw_txprocdesc(ah, NULL, (void *)&ts);
+ 		if (status == -EINPROGRESS)
+ 			break;
