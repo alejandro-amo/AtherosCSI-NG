@@ -23,7 +23,7 @@ if you get no rejects, you can patch:
 and then you can configure, make and install or build kernel-package as usual.  
   
 ## Contact Info
-alister.amo@eurecat.org
+hello@alejandroamo.eu
   
 I hope this patch could serve more people. Enjoy!  
 AA
